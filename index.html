@@ -13,18 +13,29 @@
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jschardet/2.1.1/jschardet.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.0.0/encoding.min.js"></script>
 </head>
 <body class="flex items-center justify-center min-h-screen">
     <div class="bg-white p-8 rounded shadow-md text-center text-black flex flex-col justify-centers items-center">
         <h1 class="p-6 font-bold">DYM CSVエンコード修正ツール</h1>
         <input type="file" id="fileInput" class="mb-4">
-        <button id="processButton" class="bg-green-500 hover:bg-green-300 text-white px-4 py-2 rounded w-1/2">修正</button>
+        <button id="processShiftJISButton" class="bg-blue-500 hover:bg-blue-300 text-white px-4 py-2 rounded w-2/3 mb-2">NSFAサイト等向け（Shift-JIS）変換</button>
+        <button id="processUTF8Button" class="bg-green-500 hover:bg-green-300 text-white px-4 py-2 rounded w-2/3 mb-2">その他サイト向け（UTF-8）変換</button>
     </div>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('processButton').onclick = processFile;
+            document.getElementById('processUTF8Button').onclick = processFileToUTF8;
+            document.getElementById('processShiftJISButton').onclick = processFileToShiftJIS;
 
-            function processFile() {
+            function processFileToUTF8() {
+                processFile('UTF-8');
+            }
+
+            function processFileToShiftJIS() {
+                processFile('Shift-JIS');
+            }
+
+            function processFile(targetEncoding) {
                 const fileInput = document.getElementById('fileInput');
                 const file = fileInput.files[0];
 
@@ -35,14 +46,22 @@
                         const fileContent = event.target.result;
                         const detectedEncoding = detectEncoding(fileContent);
 
-                        if (detectedEncoding === 'UTF-8' && fileContent.charCodeAt(0) === 0xFEFF) {
-                            alert('すでに正しいファイル形式 (UTF-8)');
-                            return;
+                        let convertedContent;
+                        let newFileName;
+
+                        if (targetEncoding === 'UTF-8') {
+                            if (detectedEncoding === 'UTF-8' && fileContent.charCodeAt(0) === 0xFEFF) {
+                                alert('すでに正しいファイル形式 (UTF-8)');
+                                return;
+                            }
+                            convertedContent = convertToUTF8WithBOM(fileContent, detectedEncoding);
+                            newFileName = getNewFileName(file.name, '-new');
+                        } else if (targetEncoding === 'Shift-JIS') {
+                            convertedContent = convertToShiftJIS(fileContent, detectedEncoding);
+                            newFileName = getNewFileName(file.name, '_jis');
                         }
 
-                        const utf8Content = convertToUTF8WithBOM(fileContent, detectedEncoding);
-                        const newFileName = getNewFileName(file.name);
-                        downloadFile(utf8Content, newFileName);
+                        downloadFile(convertedContent, newFileName);
                     };
 
                     reader.readAsBinaryString(file);
@@ -65,11 +84,17 @@
                 return utf8WithBom;
             }
 
-            function getNewFileName(originalName) {
+            function convertToShiftJIS(data, encoding) {
+                const decodedArray = Encoding.convert(data.split('').map(c => c.charCodeAt(0)), 'UNICODE', encoding);
+                const sjisArray = Encoding.convert(decodedArray, 'SJIS', 'UNICODE');
+                return new Uint8Array(sjisArray);
+            }
+
+            function getNewFileName(originalName, suffix) {
                 const dotIndex = originalName.lastIndexOf('.');
                 const baseName = originalName.substring(0, dotIndex);
                 const extension = originalName.substring(dotIndex);
-                return `${baseName}-new${extension}`;
+                return `${baseName}${suffix}${extension}`;
             }
 
             function downloadFile(content, fileName) {
